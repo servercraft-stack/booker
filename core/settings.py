@@ -5,6 +5,11 @@ import cloudinary
 import dj_database_url
 from dotenv import load_dotenv
 
+
+from dotenv import load_dotenv
+from decouple import config
+
+
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -117,23 +122,22 @@ WSGI_APPLICATION = "core.wsgi.application"
 # ─── Database ────────────────────────────────────────────────────────────────
 # Railway automatically injects DATABASE_URL for attached PostgreSQL services.
 # When DATABASE_URL is present, use dj-database-url with connection pooling.
-# Otherwise, fall back to SQLite for local development.
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
+
+DATABASES = {
+    "default": {
+        "ENGINE": os.getenv("DB_ENGINE"),
+        "NAME": os.getenv("DB_NAME"),
+        "USER": os.getenv("DB_USER"),
+        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "HOST": os.getenv("DB_HOST"),
+        "PORT": os.getenv("DB_PORT"),
+        "OPTIONS": {
+            "sslmode": config("DB_SSLMODE", default="require"),
+        },
+        "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", default=600, cast=int),
+        "CONN_HEALTH_CHECKS": True,
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+}
 
 AUTH_USER_MODEL = "user.User"
 
