@@ -5,6 +5,8 @@ set -e
 # Booker Backend Startup Script for Railway & Containerized Environments
 # =============================================================================
 
+echo "==> Booting application container..."
+
 # 1. Run database migrations (enabled by default)
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     echo "==> Applying database migrations..."
@@ -19,16 +21,27 @@ if [ "${RUN_COLLECTSTATIC:-false}" = "true" ]; then
     python manage.py collectstatic --noinput
 fi
 
-# 3. Port & Gunicorn Configuration
-PORT="${PORT:-8000}"
+# 3. Dynamic Port Selection
+# Railway assigns $PORT dynamically. Fall back to 8000 only if unset.
+APP_PORT="${PORT:-8000}"
 WORKERS="${GUNICORN_WORKERS:-2}"
 THREADS="${GUNICORN_THREADS:-4}"
 TIMEOUT="${GUNICORN_TIMEOUT:-120}"
 
-echo "==> Starting Gunicorn on 0.0.0.0:${PORT} (${WORKERS} workers, ${THREADS} threads, ${TIMEOUT}s timeout)..."
+# 4. Auto-detect Django WSGI Module Path
+if [ -f "core/wsgi.py" ]; then
+    WSGI_MODULE="core.wsgi:application"
+elif [ -f "booker/wsgi.py" ]; then
+    WSGI_MODULE="booker.wsgi:application"
+else
+    WSGI_MODULE="${DJANGO_WSGI_MODULE:-core.wsgi:application}"
+fi
 
-exec gunicorn core.wsgi:application \
-    --bind "0.0.0.0:${PORT}" \
+echo "==> Starting Gunicorn on 0.0.0.0:${APP_PORT} using ${WSGI_MODULE} (${WORKERS} workers, ${THREADS} threads, ${TIMEOUT}s timeout)..."
+
+# 5. Hand over process control to Gunicorn
+exec gunicorn "${WSGI_MODULE}" \
+    --bind "0.0.0.0:${APP_PORT}" \
     --workers "${WORKERS}" \
     --threads "${THREADS}" \
     --timeout "${TIMEOUT}" \
