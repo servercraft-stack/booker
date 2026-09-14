@@ -7,8 +7,8 @@ from .models import Apartment, ApartmentAvailability
 
 @receiver([post_save, post_delete], sender=Apartment)
 def clear_apartment_cache(sender, instance, **kwargs):
-    cache.delete("apartment:list")
-    cache.delete(f"apartment:detail:{instance.id}")
+    cache.delete("apartments:active_verified")
+    cache.delete(f"apartments:detail:{instance.id}")
 
 
 @receiver([post_save, post_delete], sender=ApartmentAvailability)

@@ -1,3 +1,5 @@
+import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.mail import send_mail
@@ -10,9 +12,14 @@ from .models import Notification
 from django.template.loader import render_to_string
 from django.core.mail import EmailMultiAlternatives
 
+logger = logging.getLogger(__name__)
+
+
 @receiver(post_save, sender=User)
 def welcome_notification(sender, instance, created, **kwargs):
-    if created:
+    if not created:
+        return
+    try:
         Notification.objects.create(
             user=instance,
             title="Welcome 🎉",
@@ -24,12 +31,15 @@ def welcome_notification(sender, instance, created, **kwargs):
         html_content = render_to_string("emails/welcome_user.html", {"user": instance})
         msg = EmailMultiAlternatives(
             subject="Welcome to Apartment Booking",
-            body="Your account has been successfully created.",  # fallback
+            body="Your account has been successfully created.",
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[instance.email],
         )
         msg.attach_alternative(html_content, "text/html")
-        msg.send(fail_silently=False)
+        msg.send(fail_silently=True)
+    except Exception as e:
+        logger.error("Failed to send welcome notification to %s: %s", instance.email, e)
+
 
 @receiver(post_save, sender=Apartment)
 def apartment_verified_notification(sender, instance, **kwargs):
@@ -39,30 +49,33 @@ def apartment_verified_notification(sender, instance, **kwargs):
         old = None
 
     if old and not old.is_verified and instance.is_verified:
-        host = instance.host
+        try:
+            host = instance.host
 
-        Notification.objects.create(
-            user=host,
-            title="Apartment Verified ✅",
-            message=f"Your apartment '{instance.title}' has been verified by the admin.",
-            notification_type="apartment_approved",
-            target_audience="user",
-            apartment_id=instance.id,
-        )
+            Notification.objects.create(
+                user=host,
+                title="Apartment Verified ✅",
+                message=f"Your apartment '{instance.title}' has been verified by the admin.",
+                notification_type="apartment_approved",
+                target_audience="user",
+                apartment_id=instance.id,
+            )
 
-        html_content = render_to_string("emails/apartment_verified.html", {
-            "user": host,
-            "apartment": instance
-        })
+            html_content = render_to_string("emails/apartment_verified.html", {
+                "user": host,
+                "apartment": instance
+            })
 
-        msg = EmailMultiAlternatives(
-            subject=f"Your Apartment Verified: {instance.title}",
-            body=f"Your apartment '{instance.title}' has been verified.",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[host.email],
-        )
-        msg.attach_alternative(html_content, "text/html")
-        msg.send(fail_silently=False)
+            msg = EmailMultiAlternatives(
+                subject=f"Your Apartment Verified: {instance.title}",
+                body=f"Your apartment '{instance.title}' has been verified.",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[host.email],
+            )
+            msg.attach_alternative(html_content, "text/html")
+            msg.send(fail_silently=True)
+        except Exception as e:
+            logger.error("Failed to send apartment verified notification: %s", e)
 
 
 @receiver(post_save, sender=ApartmentAvailability)
@@ -70,41 +83,48 @@ def apartment_available_notification(sender, instance, **kwargs):
     if not instance.is_available:
         return
 
-    apartment = instance.apartment
-    users = User.objects.all()
-    notifications = []
+    try:
+        apartment = instance.apartment
+        users = User.objects.all()
+        notifications = []
 
-    for user in users:
-        notifications.append(Notification(
-            user=user,
-            title="Apartment Available 🏡",
-            message=f"{apartment.title} is available on {instance.date}.",
-            notification_type="apartment_available",
-            target_audience="user",
-            apartment_id=apartment.id,
-        ))
+        for user in users:
+            notifications.append(Notification(
+                user=user,
+                title="Apartment Available 🏡",
+                message=f"{apartment.title} is available on {instance.date}.",
+                notification_type="apartment_available",
+                target_audience="user",
+                apartment_id=apartment.id,
+            ))
 
-        html_content = render_to_string("emails/apartment_available.html", {
-            "user": user,
-            "apartment": apartment,
-            "availability": instance
-        })
+        Notification.objects.bulk_create(notifications)
 
-        msg = EmailMultiAlternatives(
-            subject=f"Apartment Available: {apartment.title}",
-            body=f"{apartment.title} is available on {instance.date}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[user.email],
-        )
-        msg.attach_alternative(html_content, "text/html")
-        msg.send(fail_silently=False)
+        for user in users:
+            html_content = render_to_string("emails/apartment_available.html", {
+                "user": user,
+                "apartment": apartment,
+                "availability": instance
+            })
 
-    Notification.objects.bulk_create(notifications)
+            msg = EmailMultiAlternatives(
+                subject=f"Apartment Available: {apartment.title}",
+                body=f"{apartment.title} is available on {instance.date}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[user.email],
+            )
+            msg.attach_alternative(html_content, "text/html")
+            msg.send(fail_silently=True)
+    except Exception as e:
+        logger.error("Failed to send apartment available notification: %s", e)
+
 
 @receiver(post_save, sender=Booking)
 def booking_confirmed_notification(sender, instance, created, **kwargs):
-    if created:
-        guest = instance.user
+    if not created:
+        return
+    try:
+        guest = instance.guest
         host = instance.apartment.host
 
         # Guest notification
@@ -112,7 +132,7 @@ def booking_confirmed_notification(sender, instance, created, **kwargs):
             user=guest,
             title="Booking Confirmed ✅",
             message=f"You successfully booked '{instance.apartment.title}'.",
-            notification_type="booking_confirmed",
+            notification_type="apartment_approved",
             target_audience="user",
             booking_id=instance.id,
             apartment_id=instance.apartment.id,
@@ -125,14 +145,14 @@ def booking_confirmed_notification(sender, instance, created, **kwargs):
             to=[guest.email],
         )
         msg.attach_alternative(html_content, "text/html")
-        msg.send(fail_silently=False)
+        msg.send(fail_silently=True)
 
         # Host notification
         Notification.objects.create(
             user=host,
             title="New Booking Received 📝",
             message=f"{guest.first_name} booked your apartment '{instance.apartment.title}'.",
-            notification_type="booking_created",
+            notification_type="system",
             target_audience="user",
             booking_id=instance.id,
             apartment_id=instance.apartment.id,
@@ -145,7 +165,9 @@ def booking_confirmed_notification(sender, instance, created, **kwargs):
             to=[host.email],
         )
         msg_host.attach_alternative(html_content_host, "text/html")
-        msg_host.send(fail_silently=False)
+        msg_host.send(fail_silently=True)
+    except Exception as e:
+        logger.error("Failed to send booking confirmed notification: %s", e)
 
 
 @receiver(post_save, sender=Booking)
@@ -153,45 +175,48 @@ def booking_cancelled_notification(sender, instance, **kwargs):
     if instance.status != "cancelled":
         return
 
-    guest = instance.user
-    host = instance.apartment.host
+    try:
+        guest = instance.guest
+        host = instance.apartment.host
 
-    # Guest
-    Notification.objects.create(
-        user=guest,
-        title="Booking Cancelled ❌",
-        message=f"You cancelled your booking for '{instance.apartment.title}'.",
-        notification_type="booking_cancelled",
-        target_audience="user",
-        booking_id=instance.id,
-        apartment_id=instance.apartment.id,
-    )
-    html_content_guest = render_to_string("emails/booking_cancelled.html", {"user": guest, "booking": instance})
-    msg = EmailMultiAlternatives(
-        subject="Booking Cancelled",
-        body=f"You cancelled your booking for {instance.apartment.title}",
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[guest.email],
-    )
-    msg.attach_alternative(html_content_guest, "text/html")
-    msg.send(fail_silently=False)
+        # Guest
+        Notification.objects.create(
+            user=guest,
+            title="Booking Cancelled ❌",
+            message=f"You cancelled your booking for '{instance.apartment.title}'.",
+            notification_type="apartment_rejected",
+            target_audience="user",
+            booking_id=instance.id,
+            apartment_id=instance.apartment.id,
+        )
+        html_content_guest = render_to_string("emails/booking_cancelled.html", {"user": guest, "booking": instance})
+        msg = EmailMultiAlternatives(
+            subject="Booking Cancelled",
+            body=f"You cancelled your booking for {instance.apartment.title}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[guest.email],
+        )
+        msg.attach_alternative(html_content_guest, "text/html")
+        msg.send(fail_silently=True)
 
-    # Host
-    Notification.objects.create(
-        user=host,
-        title="Booking Cancelled ❌",
-        message=f"{guest.first_name} cancelled their booking for '{instance.apartment.title}'.",
-        notification_type="booking_cancelled",
-        target_audience="user",
-        booking_id=instance.id,
-        apartment_id=instance.apartment.id,
-    )
-    html_content_host = render_to_string("emails/booking_cancelled.html", {"user": host, "booking": instance})
-    msg_host = EmailMultiAlternatives(
-        subject="Booking Cancelled",
-        body=f"{guest.first_name} cancelled their booking for {instance.apartment.title}",
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[host.email],
-    )
-    msg_host.attach_alternative(html_content_host, "text/html")
-    msg_host.send(fail_silently=False)
+        # Host
+        Notification.objects.create(
+            user=host,
+            title="Booking Cancelled ❌",
+            message=f"{guest.first_name} cancelled their booking for '{instance.apartment.title}'.",
+            notification_type="apartment_rejected",
+            target_audience="user",
+            booking_id=instance.id,
+            apartment_id=instance.apartment.id,
+        )
+        html_content_host = render_to_string("emails/booking_cancelled.html", {"user": host, "booking": instance})
+        msg_host = EmailMultiAlternatives(
+            subject="Booking Cancelled",
+            body=f"{guest.first_name} cancelled their booking for {instance.apartment.title}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[host.email],
+        )
+        msg_host.attach_alternative(html_content_host, "text/html")
+        msg_host.send(fail_silently=True)
+    except Exception as e:
+        logger.error("Failed to send booking cancelled notification: %s", e)

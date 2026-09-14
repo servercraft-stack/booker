@@ -33,6 +33,7 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
+    stripe_session_id = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         ordering = ("-created_at",)
@@ -50,9 +51,5 @@ class Booking(models.Model):
                 self.total_price = Decimal(pricing.price_per_night) * self.nights + Decimal(pricing.cleaning_fee) + Decimal(pricing.service_fee)
             except ApartmentPricing.DoesNotExist:
                 self.total_price = Decimal('0.00')
-
-        if self.provider_transaction_id:
-            self.payment_status = "paid"
-            self.status = "confirmed"
 
         super().save(*args, **kwargs)

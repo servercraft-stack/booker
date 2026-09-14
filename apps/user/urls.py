@@ -1,26 +1,31 @@
-from django.urls import include, path
-
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
 from apps.user.views import (
-    UserViewSet,
+    ChangePasswordView,
+    GoogleAuthView,
     LoginView,
     LogoutView,
-    ChangePasswordView,
-    EmailVerificationView,
-    PasswordRequestResetView,
-    PasswordResetConfirmView,       
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
+    ProfileView,
+    RegisterView,
+    ResendOTPView,
+    UserDetailView,
+    VerifyOTPView,
 )
 
-router = DefaultRouter()
-router.register(r'users', UserViewSet, basename='user')
+app_name = "user"
 
 urlpatterns = [
-    path("", include(router.urls)),
+    path("register/", RegisterView.as_view(), name="register"),
+    path("verify-otp/", VerifyOTPView.as_view(), name="verify-otp"),
+    path("resend-otp/", ResendOTPView.as_view(), name="resend-otp"),
     path("login/", LoginView.as_view(), name="login"),
+    path("google/", GoogleAuthView.as_view(), name="google"),
     path("logout/", LogoutView.as_view(), name="logout"),
-    path("change-password/", ChangePasswordView.as_view(), name="change_password"),
-    path("verify/email/", EmailVerificationView.as_view(), name="email_verification"),
-    path("password-reset/request/", PasswordRequestResetView.as_view(), name="password_reset_request"),
-    path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
+    path("me/", ProfileView.as_view(), name="profile"),
+    path("users/<uuid:user_id>/", UserDetailView.as_view(), name="user-detail"),
+    path("password/change/", ChangePasswordView.as_view(), name="password-change"),
+    path("password/reset/", PasswordResetRequestView.as_view(), name="password-reset"),
+    path("password/reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
 ]

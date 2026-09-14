@@ -29,16 +29,12 @@ def get_apartment_detail(apartment_id):
             Apartment.objects
             .select_related("pricing", "address")
             .prefetch_related("amenities", "rules", "availability")
-            .get(id=apartment_id)
+            .filter(id=apartment_id)
+            .first()
         )
         cache.set(key, apartment, CACHE_TTL)
 
     return apartment
-
-
-
-from django.core.cache import cache
-from .models import ApartmentAvailability
 
 
 def get_apartment_availability(apartment_id):

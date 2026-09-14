@@ -24,9 +24,9 @@ WORKDIR /app
 # Copy dependency files first (layer caching optimization)
 COPY pyproject.toml poetry.lock ./
 
-# Install dependencies (no dev dependencies, no virtualenv inside container)
+# Install dependencies without virtualenv inside container (no-root since app code is copied in stage 2)
 RUN poetry config virtualenvs.create false && \
-    poetry install --no-dev --no-interaction --no-ansi
+    poetry install --no-root --no-interaction --no-ansi
 
 # =============================================================================
 # Stage 2: Production image
@@ -46,7 +46,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN groupadd -r django && useradd -r -g django -d /app -s /sbin/nologin django
+RUN groupadd -r django && useradd -r -g django -d /app -s /bin/bash django
 
 # Set working directory
 WORKDIR /app
@@ -58,7 +58,10 @@ COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
 # Copy application code
 COPY . .
 
-# Collect static files
+# Ensure start.sh has executable permissions
+RUN chmod +x /app/start.sh
+
+# Collect static files at build time
 RUN DJANGO_SECRET_KEY=build-placeholder python manage.py collectstatic --noinput 2>/dev/null || true
 
 # Ensure the non-root user owns the app directory
@@ -67,22 +70,12 @@ RUN chown -R django:django /app
 # Switch to non-root user
 USER django
 
-# Expose the port Cloud Run expects
-EXPOSE 8080
+# Expose common ports (Railway provides dynamic PORT)
+EXPOSE 8000 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/')" || exit 1
+# Health check dynamically checking current PORT
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8000'); urllib.request.urlopen(f'http://127.0.0.1:{port}/health/')" || exit 1
 
-# Run with Gunicorn
-# - bind: listen on 0.0.0.0:8080 (Cloud Run requirement)
-# - workers: 2 * CPU + 1 (Cloud Run default is 1 vCPU)
-# - timeout: 120s for cold starts
-# - accesslog: log to stdout for Cloud Logging
-CMD ["gunicorn", "core.wsgi:application", \
-     "--bind", "0.0.0.0:8080", \
-     "--workers", "2", \
-     "--threads", "4", \
-     "--timeout", "120", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+# Start container using the production entrypoint script
+CMD ["/app/start.sh"]

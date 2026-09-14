@@ -28,9 +28,6 @@ CACHE_TIMEOUT = 60 * 500
 
 
 def get_cached_active_apartments():
-    """
-    Returns cached active & verified apartments with all relations
-    """
     cache_key = "apartments:active_verified"
 
     apartments = cache.get(cache_key)
@@ -48,9 +45,6 @@ def get_cached_active_apartments():
 
 
 def get_cached_apartment_detail(apartment_id):
-    """
-    Cache single apartment detail
-    """
     cache_key = f"apartments:detail:{apartment_id}"
 
     apartment = cache.get(cache_key)

@@ -1,108 +1,39 @@
-# Byte-compiled / optimized / DLL files
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+.env.gcp
+
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-
-# Django stuff:
-*.log
-*.pot
-*.pyc
 *.pyo
-*.sqlite3
+venv/
+.venv/
+venv
+
+# Django
 db.sqlite3
-media/
 staticfiles/
-static/
-__pycache__/
+media/
 
-# If using Cloudinary local cache
-.cloudinary/
+# Node
+frontend/node_modules/
+frontend/dist/
 
-# Django migrations
-*/migrations/*.py
-!*/migrations/__init__.py
-
-# Pytest
-.cache/
-.pytest_cache/
-
-# IDEs
-.idea/
+# IDE
 .vscode/
-*.sublime-project
-*.sublime-workspace
+.idea/
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Environment variables
-.env
-.env.*
-*.env
-
-# Backup files
-*.bak
-*.swp
-*~
+# Certs (local dev only)
+*.pem
+*.key
+*.crt
 
 # Logs
 *.log
-logs/
-
-# Coverage reports
-htmlcov/
-.coverage
-coverage.xml
-*.cover
-*.py,cover
-nosetests.xml
-.junit.xml
-*.lcov
-
-# Celery beat schedule file
-celerybeat-schedule
-
-# mypy
-.mypy_cache/
-
-# Pyre type checker
-.pyre/
-
-# Pylint
-pylint.log
-
-# Rope project settings
-.ropeproject/
-
-# VS Code settings folder
-.vscode/
+*.ctl

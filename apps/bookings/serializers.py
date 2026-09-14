@@ -9,7 +9,6 @@ from apps.apartments.models import Apartment, ApartmentPricing
 
 class BookingSerializer(serializers.ModelSerializer):
     guest = serializers.StringRelatedField(read_only=True)
-    apartment = serializers.PrimaryKeyRelatedField(queryset=Apartment.objects.all())
 
     class Meta:
         model = Booking
@@ -30,6 +29,7 @@ class BookingSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "apartment",
             "guest",
             "nights",
             "total_price",
@@ -41,6 +41,16 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         apartment = attrs.get("apartment") or getattr(self.instance, "apartment", None)
+
+        # When apartment is read-only, resolve it from the view kwargs
+        if not apartment:
+            view = self.context.get("view")
+            if view:
+                apartment_id = view.kwargs.get("apartment_id")
+                if apartment_id:
+                    apartment = Apartment.objects.get(id=apartment_id)
+                    attrs["apartment"] = apartment
+
         check_in = attrs.get("check_in") or getattr(self.instance, "check_in", None)
         check_out = attrs.get("check_out") or getattr(self.instance, "check_out", None)
         guests_count = attrs.get("guests_count") or getattr(self.instance, "guests_count", 1)

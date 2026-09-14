@@ -105,5 +105,6 @@ vine==5.1.0
 virtualenv==20.35.4
 wcwidth==0.2.14
 whitenoise==6.11.0
+google-auth==2.36.0
 zipp==3.23.0
 zstandard==0.25.0

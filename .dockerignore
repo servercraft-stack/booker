@@ -55,6 +55,10 @@ Dockerfile*
 docker-compose*
 .dockerignore
 
+# Frontend (Backend standalone deployment)
+frontend/
+node_modules/
+
 # Documentation
 README.md
 SECURITY.md

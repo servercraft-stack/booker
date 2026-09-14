@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from cloudinary.models import CloudinaryField
+import uuid
 
 
 User = get_user_model()
@@ -21,11 +22,12 @@ class Amenity(models.Model):
 
 
 class Apartment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     host = models.ForeignKey(User, on_delete=models.CASCADE, related_name='apartments')
     title = models.CharField(max_length=255)
     description = models.TextField()
 
-    # Cloudinary image field with a default placeholder
+
     image = CloudinaryField(
         resource_type='auto',
         folder='apartments',

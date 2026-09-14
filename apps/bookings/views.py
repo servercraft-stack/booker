@@ -9,7 +9,6 @@ from django.db import transaction
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from drf_yasg.utils import swagger_auto_schema
 
 from apps.apartments.models import Apartment
@@ -35,7 +34,9 @@ class ApartmentBookingListCreateView(generics.ListCreateAPIView):
         return Booking.objects.filter(apartment_id=apartment_id).order_by("-created_at")
 
     def get_serializer_context(self):
-        return {"request": self.request}
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
 
     @swagger_auto_schema(
         operation_summary="List bookings for an apartment",
@@ -68,6 +69,16 @@ class ApartmentBookingListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         apartment = Apartment.objects.select_for_update().get(id=self.kwargs.get("apartment_id"))
         serializer.save(apartment=apartment, guest=self.request.user)
+
+class MyBookingsView(generics.ListAPIView):
+    """List all bookings where the current user is the guest."""
+    serializer_class = BookingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Booking.objects.filter(guest=self.request.user).select_related("apartment").order_by("-created_at")
+
 
 class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = BookingSerializer
@@ -136,14 +147,71 @@ class CreateCheckoutSessionView(APIView):
                     'quantity': 1,
                 }],
                 mode='payment',
-                success_url=request.build_absolute_uri('/payment-success/'),
-                cancel_url=request.build_absolute_uri(f'/bookings/{booking.id}/'),
+                success_url=f"{settings.FRONTEND_URL}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{settings.FRONTEND_URL}/bookings/{booking.id}",
                 metadata={"booking_id": str(booking.id)}
             )
+            booking.stripe_session_id = checkout_session.id
+            booking.save(update_fields=["stripe_session_id"])
             return Response({"url": checkout_session.url}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.exception("Stripe checkout session creation failed for booking %s", booking.id)
             return Response({"error": "Payment provider error. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DeleteCancelledBookingView(APIView):
+    """Permanently delete a cancelled booking."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, booking_id):
+        booking = get_object_or_404(Booking, id=booking_id, guest=request.user)
+
+        if booking.status != "cancelled":
+            return Response(
+                {"detail": "Only cancelled bookings can be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        booking_id_str = str(booking.id)
+        booking.delete()
+        return Response(
+            {"detail": f"Booking {booking_id_str} has been permanently deleted."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class VerifyPaymentView(APIView):
+    """Verify payment status directly with Stripe (webhook fallback)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, booking_id):
+        booking = get_object_or_404(Booking, id=booking_id, guest=request.user)
+
+        if booking.payment_status == "paid":
+            return Response({
+                "payment_status": booking.payment_status,
+                "status": booking.status,
+            })
+
+        if not booking.stripe_session_id:
+            return Response({"error": "No Stripe session found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            session = stripe.checkout.Session.retrieve(booking.stripe_session_id)
+        except Exception as e:
+            logger.exception("Failed to retrieve Stripe session for booking %s", booking.id)
+            return Response({"error": "Could not verify payment."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if session.payment_status == "paid":
+            booking.payment_status = "paid"
+            booking.status = "confirmed"
+            booking.provider_transaction_id = session.payment_intent
+            booking.save(update_fields=["payment_status", "status", "provider_transaction_id"])
+
+        return Response({
+            "payment_status": booking.payment_status,
+            "status": booking.status,
+        })
 
 
 @csrf_exempt
