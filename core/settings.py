@@ -123,6 +123,12 @@ WSGI_APPLICATION = "core.wsgi.application"
 # Railway automatically injects DATABASE_URL for attached PostgreSQL services.
 # When DATABASE_URL is present, use dj-database-url with connection pooling.
 
+# sslmode is only meaningful for Postgres; leave DB_SSLMODE empty to run
+# against SQLite (e.g. local test runs).
+_DB_OPTIONS = {}
+if config("DB_SSLMODE", default="require"):
+    _DB_OPTIONS["sslmode"] = config("DB_SSLMODE", default="require")
+
 DATABASES = {
     "default": {
         "ENGINE": os.getenv("DB_ENGINE"),
@@ -131,9 +137,7 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASSWORD"),
         "HOST": os.getenv("DB_HOST"),
         "PORT": os.getenv("DB_PORT"),
-        "OPTIONS": {
-            "sslmode": config("DB_SSLMODE", default="require"),
-        },
+        "OPTIONS": _DB_OPTIONS,
         "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", default=600, cast=int),
         "CONN_HEALTH_CHECKS": True,
     }
@@ -267,15 +271,56 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost")
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1", "yes")
-EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "false").lower() in ("true", "1", "yes")
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+# ─── Email (via Anymail / Brevo) ──────────────────────────────────────────────
+# Railway free tier blocks outbound SMTP (ports 25/465/587), so we use
+# Anymail to send through Brevo's HTTPS API instead.
+INSTALLED_APPS += ["anymail"]
+
+# Preferred backend name in recent Anymail versions
+EMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
+
+ANYMAIL = {
+    # Anymail recognizes both BREVO_API_KEY and SENDINBLUE_API_KEY
+    "BREVO_API_KEY": os.getenv("BREVO_API_KEY"),
+    "SENDINBLUE_API_KEY": os.getenv("BREVO_API_KEY"),
+}
+
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@yourdomain.com")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# Brevo silently drops (returns 201 but never delivers) mail from a sender that
+# is not verified under Senders, Domains & Dedicated IPs. Fail loudly at startup
+# if the placeholder default is still in use.
+if DEFAULT_FROM_EMAIL == "noreply@yourdomain.com":
+    import warnings
+
+    warnings.warn(
+        "DEFAULT_FROM_EMAIL is still the placeholder 'noreply@yourdomain.com'. "
+        "Brevo only delivers mail from senders verified in its dashboard "
+        "(Senders, Domains & Dedicated IPs) — set DEFAULT_FROM_EMAIL to a "
+        "verified address or the 201-accepted messages will never arrive.",
+        stacklevel=0,
+    )
+# Ensure Resend / Anymail errors are visible in Railway logs
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "anymail": {
+            "level": "DEBUG",
+            "handlers": ["console"],
+        },
+        "apps.base.account_utils": {
+            "level": "DEBUG",
+            "handlers": ["console"],
+        },
+    },
+}
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),

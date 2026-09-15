@@ -180,6 +180,9 @@ def verfiy_user_otp(user, otp: str) -> bool:
     return True
 
 def send_otp_email(user_id: int, otp: str, purpose: str):
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         if isinstance(user_id, User):
             user = user_id
@@ -202,16 +205,33 @@ def send_otp_email(user_id: int, otp: str, purpose: str):
         email_message = EmailMessage(
             subject=subject,
             body=html_message,
-            from_email=settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER,
+            from_email=settings.DEFAULT_FROM_EMAIL,
             to=[user.email]
         )
         email_message.content_subtype = "html"  # Set content type to HTML
         email_message.send()
+
+        # Brevo's API returns 201 ("queued") even for messages it later blocks
+        # (unverified sender, missing credits, suspended account...). Log the
+        # message_id so the send can be looked up under Transactional > Real time.
+        try:
+            recipients = email_message.anymail_status.recipients
+            for recipient, status_info in recipients.items():
+                logger.info(
+                    "OTP email queued for %s: message_id=%s status=%s",
+                    recipient,
+                    email_message.anymail_status.message_id,
+                    status_info.status,
+                )
+        except AttributeError:
+            # anymail_status is absent when running under a non-Anymail backend
+            logger.info("OTP email sent to %s", user.email)
         return True
         
     except User.DoesNotExist:
         raise ValueError("User with the given ID does not exist.")
     except Exception as e:
+        logger.error("Failed to send OTP email to %s: %s", getattr(user, 'email', 'unknown'), e)
         raise RuntimeError(f"Failed to send OTP email: {str(e)}")
 
 def get_tokens_for_user(user):
