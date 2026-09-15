@@ -37,9 +37,13 @@ else
     WSGI_MODULE="${DJANGO_WSGI_MODULE:-core.wsgi:application}"
 fi
 
+# 5. Install dependencies
+echo "==> Installing dependencies from requirements.txt..."
+pip install -r requirements.txt
+
 echo "==> Starting Gunicorn on 0.0.0.0:${APP_PORT} using ${WSGI_MODULE} (${WORKERS} workers, ${THREADS} threads, ${TIMEOUT}s timeout)..."
 
-# 5. Hand over process control to Gunicorn
+# 6. Hand over process control to Gunicorn
 exec gunicorn "${WSGI_MODULE}" \
     --bind "0.0.0.0:${APP_PORT}" \
     --workers "${WORKERS}" \
