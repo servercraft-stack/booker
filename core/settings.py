@@ -250,7 +250,11 @@ else:
         'LOCATION': 'ratelimit-local-cache',
     }
 
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+# Use db-backed sessions so they are shared across all Gunicorn workers.
+# (LocMemCache is process-local; with multiple workers the session stored
+# by one worker is invisible to others, causing admin to redirect back to
+# the login page after a POST.)
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_CACHE_ALIAS = 'default'
 
 RATELIMIT_ENABLE = os.getenv('RATELIMIT_ENABLE', 'False').lower() in ('true', '1', 'yes')
